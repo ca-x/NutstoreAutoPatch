@@ -8,3 +8,4 @@ auto patch NutstoreLib.dll
 5    0019    call    string [Pri.LongPath]Pri.LongPath.Path::Combine(string, string)
 6    001E    ret
 ```
+detail,see my blog post about this [url](https://czyt.tech/post/use-mono-cecil-to-auto-patch-dotnet-application/)
