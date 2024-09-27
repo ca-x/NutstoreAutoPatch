@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System.IO;
+using System.Linq;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -9,10 +10,12 @@ namespace NutstoreAutoPatch
         public static void Main(string[] args)
         {
            const string nutstoreLib = "NutstoreLib.dll"; 
+           const string nutstoreLibBackup = "NutstoreLib.origin.dll"; 
            const string directoryutils = "NutstoreLib.Utils.DirectoryUtils"; 
            const string appdataNutstoreDir = "get_APPDATA_NUTSTORE_DIR"; 
            
-           
+           // backup origin 
+           File.Copy(nutstoreLib, nutstoreLibBackup, true);
             // Read the assembly
             var assemblyDefinition = AssemblyDefinition.ReadAssembly(nutstoreLib);
             var directoryUtil = assemblyDefinition.MainModule.Types.First(t => t.FullName == directoryutils);
@@ -61,9 +64,9 @@ namespace NutstoreAutoPatch
 
           // 返回指令
             ilProcessor.Append(ilProcessor.Create(OpCodes.Ret));
-
+            
             // Write the modified assembly
-            assemblyDefinition.Write("NutstoreLib_patched.dll");
+            assemblyDefinition.Write(nutstoreLib);
         }
     }
 }
