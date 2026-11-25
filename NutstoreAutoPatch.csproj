@@ -58,6 +58,11 @@
         <Compile Include="Program.cs"/>
         <Compile Include="MainForm.cs"/>
         <Compile Include="OperationRunner.cs"/>
+        <Compile Include="PortableOptions.cs"/>
+        <Compile Include="FileChanges.cs"/>
+        <Compile Include="UpdatePatcher.cs"/>
+        <Compile Include="PortableLogConfig.cs"/>
+        <Compile Include="StartupSetting.cs"/>
         <Compile Include="Patcher.cs"/>
         <Compile Include="Properties\AssemblyInfo.cs"/>
     </ItemGroup>

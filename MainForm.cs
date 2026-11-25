@@ -11,13 +11,19 @@ namespace NutstoreAutoPatch
         private readonly TextBox installPathBox = new TextBox { Name = "TargetPath", Dock = DockStyle.Fill };
         private readonly TextBox logBox = new TextBox { Name = "LogOutput", Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = Color.White };
         private readonly CheckBox autoCloseCheckBox = new CheckBox { Name = "AutoCloseProcesses", Text = "操作前自动关闭坚果云相关进程", Checked = true, AutoSize = true };
-        private readonly CheckBox createBackupCheckBox = new CheckBox { Name = "CreateBackup", Text = "备份原 DLL（用于恢复）", Checked = true, AutoSize = true };
+        private readonly CheckBox createBackupCheckBox = new CheckBox { Name = "CreateBackup", Text = "备份修改项（用于恢复）", Checked = true, AutoSize = true };
+        private readonly CheckBox userDataCheckBox = new CheckBox { Name = "PatchUserData", Text = "资料使用相对 UserData 目录", Checked = true, AutoSize = true };
+        private readonly CheckBox backgroundUpdatesCheckBox = new CheckBox { Name = "DisableBackgroundUpdates", Text = "关闭后台更新检查", AutoSize = true };
+        private readonly CheckBox portableLogsCheckBox = new CheckBox { Name = "PortableLogs", Text = "组件日志写入 UserData\\logs", AutoSize = true };
+        private readonly CheckBox disableStartupCheckBox = new CheckBox { Name = "DisableStartup", Text = "关闭此安装的开机启动", AutoSize = true };
         private readonly Button statusButton = new Button { Name = "CheckButton", Text = "检查状态", AutoSize = true, Padding = new Padding(14, 7, 14, 7) };
-        private readonly Button patchButton = new Button { Name = "PatchButton", Text = "应用补丁", AutoSize = true, Padding = new Padding(14, 7, 14, 7) };
-        private readonly Button restoreButton = new Button { Name = "RestoreButton", Text = "恢复原程序", AutoSize = true, Padding = new Padding(14, 7, 14, 7) };
+        private readonly Button patchButton = new Button { Name = "PatchButton", Text = "应用所选", AutoSize = true, Padding = new Padding(14, 7, 14, 7) };
+        private readonly Button restoreButton = new Button { Name = "RestoreButton", Text = "恢复所选", AutoSize = true, Padding = new Padding(14, 7, 14, 7) };
         private readonly Label stateLabel = new Label { Name = "stateLabel", Text = "就绪", AutoSize = true, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
         private readonly ProgressBar progressBar = new ProgressBar { Name = "progressBar", Style = ProgressBarStyle.Marquee, Dock = DockStyle.Fill, Visible = false };
         private readonly TableLayoutPanel inputPanel;
+        private readonly TableLayoutPanel optionsPanel;
+        private readonly ToolTip toolTip = new ToolTip { AutoPopDelay = 20000 };
         private bool busy;
 
         public MainForm()
@@ -26,8 +32,8 @@ namespace NutstoreAutoPatch
             Text = "坚果云相对路径补丁 · NutstoreAutoPatch";
             Font = new Font("Microsoft YaHei UI", 10F);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(830, 570);
-            MinimumSize = new Size(720, 560);
+            ClientSize = new Size(900, 700);
+            MinimumSize = new Size(800, 680);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = Color.FromArgb(247, 249, 252);
 
@@ -36,7 +42,7 @@ namespace NutstoreAutoPatch
             for (int row = 0; row < 8; row++) layout.RowStyles.Add(new RowStyle(row == 6 ? SizeType.Percent : SizeType.AutoSize, row == 6 ? 100 : 0));
             Controls.Add(layout);
             layout.Controls.Add(new Label { Text = "让资料跟随程序目录", AutoSize = true, Font = new Font(Font.FontFamily, 19F, FontStyle.Bold), Margin = new Padding(0, 0, 0, 8) }, 0, 0);
-            layout.Controls.Add(new Label { Text = "选择坚果云目录，将用户资料位置设置为程序目录旁的 UserData。", AutoSize = true, Margin = new Padding(0, 0, 0, 22), ForeColor = Color.FromArgb(80, 91, 110) }, 0, 1);
+            layout.Controls.Add(new Label { Text = "勾选需要修改的项目，再应用或恢复；未勾选的项目保持原状。", AutoSize = true, Margin = new Padding(0, 0, 0, 22), ForeColor = Color.FromArgb(80, 91, 110) }, 0, 1);
 
             inputPanel = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3, RowCount = 2, Margin = new Padding(0, 0, 0, 14) };
             inputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -56,12 +62,31 @@ namespace NutstoreAutoPatch
             inputPanel.Controls.Add(dllButton, 2, 1);
             layout.Controls.Add(inputPanel, 0, 2);
 
-            var optionsPanel = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, Margin = new Padding(0, 0, 0, 14), WrapContents = false, FlowDirection = FlowDirection.TopDown };
-            optionsPanel.Controls.Add(autoCloseCheckBox);
-            optionsPanel.Controls.Add(createBackupCheckBox);
-            var backupHint = new Label { Name = "BackupHint", Text = "不备份将无法依靠本次操作自动恢复。", AutoSize = true, Visible = false, ForeColor = Color.FromArgb(130, 84, 30), Margin = new Padding(3, 3, 0, 0) };
+            optionsPanel = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Top, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 0, 0, 14) };
+            optionsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
+            optionsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
+            var features = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, WrapContents = false, FlowDirection = FlowDirection.TopDown, Margin = new Padding(0) };
+            var execution = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, WrapContents = false, FlowDirection = FlowDirection.TopDown, Margin = new Padding(0) };
+            features.Controls.Add(new Label { Text = "功能选项", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(3, 0, 0, 5) });
+            features.Controls.Add(userDataCheckBox);
+            features.Controls.Add(backgroundUpdatesCheckBox);
+            features.Controls.Add(portableLogsCheckBox);
+            features.Controls.Add(disableStartupCheckBox);
+            var updateHint = new Label { Name = "UpdateHint", Text = "同时暂停 Outlook 插件更新及相关功能配置刷新。", AutoSize = true, MaximumSize = new Size(380, 0), Visible = false, ForeColor = Color.FromArgb(130, 84, 30), Margin = new Padding(3, 5, 8, 0) };
+            backgroundUpdatesCheckBox.CheckedChanged += delegate { updateHint.Visible = backgroundUpdatesCheckBox.Checked; };
+            features.Controls.Add(updateHint);
+            execution.Controls.Add(new Label { Text = "操作设置", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(3, 0, 0, 5) });
+            execution.Controls.Add(autoCloseCheckBox);
+            execution.Controls.Add(createBackupCheckBox);
+            var backupHint = new Label { Name = "BackupHint", Text = "不备份将无法依靠本次操作自动恢复。", AutoSize = true, MaximumSize = new Size(260, 0), Visible = false, ForeColor = Color.FromArgb(130, 84, 30), Margin = new Padding(3, 3, 0, 0) };
             createBackupCheckBox.CheckedChanged += delegate { backupHint.Visible = !createBackupCheckBox.Checked; };
-            optionsPanel.Controls.Add(backupHint);
+            execution.Controls.Add(backupHint);
+            optionsPanel.Controls.Add(features, 0, 0);
+            optionsPanel.Controls.Add(execution, 1, 0);
+            toolTip.SetToolTip(backgroundUpdatesCheckBox, "停止此后台更新检查线程，同时暂停 Outlook 插件更新和相关功能配置刷新。此选项不保证阻止手动安装及其他更新入口。");
+            toolTip.SetToolTip(portableLogsCheckBox, "仅修改所选版本目录中可识别的组件日志配置；不修改已安装在系统目录的服务副本。");
+            toolTip.SetToolTip(disableStartupCheckBox, "仅删除当前用户中指向此安装目录的坚果云开机启动项，不停用系统服务。");
+            toolTip.SetToolTip(restoreButton, "仅恢复勾选的功能，需要与当前状态匹配的备份；取消勾选本身不会撤销已应用的修改。");
             layout.Controls.Add(optionsPanel, 0, 3);
             var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, Margin = new Padding(0, 0, 0, 16), WrapContents = false };
             patchButton.BackColor = Color.FromArgb(36, 92, 201);
@@ -72,8 +97,8 @@ namespace NutstoreAutoPatch
             actions.Controls.Add(patchButton);
             actions.Controls.Add(restoreButton);
             statusButton.Click += async delegate { await Run("status", "检查状态"); };
-            patchButton.Click += async delegate { await Run("patch", "应用补丁"); };
-            restoreButton.Click += async delegate { await Run("restore", "恢复原程序"); };
+            patchButton.Click += async delegate { await Run("patch", "应用所选"); };
+            restoreButton.Click += async delegate { await Run("restore", "恢复所选"); };
             layout.Controls.Add(actions, 0, 4);
             layout.Controls.Add(new Label { Text = "操作记录 · 已有用户资料不会被移动或合并。", AutoSize = true, Margin = new Padding(0, 0, 0, 8), ForeColor = Color.FromArgb(80, 91, 110) }, 0, 5);
             logBox.Margin = new Padding(0, 0, 0, 12);
@@ -86,7 +111,9 @@ namespace NutstoreAutoPatch
             footer.Controls.Add(progressBar, 1, 0);
             layout.Controls.Add(footer, 0, 7);
             installPathBox.Text = OperationRunner.DefaultPath();
-            AppendLog("请选择目录后检查状态。检查不会关闭任何进程。");
+            AppendLog("请选择目录后检查状态。检查展示所有功能，不会关闭进程或修改设置。");
+            AppendLog("应用和恢复只处理勾选的功能；取消勾选本身不会撤销已有修改。");
+            FormClosed += delegate { toolTip.Dispose(); };
             FormClosing += delegate(object sender, FormClosingEventArgs e)
             {
                 if (!busy) return;
@@ -125,21 +152,27 @@ namespace NutstoreAutoPatch
             string input = installPathBox.Text;
             bool closeProcesses = autoCloseCheckBox.Checked;
             bool createBackup = action != "patch" || createBackupCheckBox.Checked;
+            var options = new PortableOptions {
+                ApplyUserData = userDataCheckBox.Checked,
+                DisableBackgroundUpdates = backgroundUpdatesCheckBox.Checked,
+                PortableLogs = portableLogsCheckBox.Checked,
+                DisableStartup = disableStartupCheckBox.Checked
+            };
             busy = true;
-            inputPanel.Enabled = autoCloseCheckBox.Enabled = createBackupCheckBox.Enabled = statusButton.Enabled = patchButton.Enabled = restoreButton.Enabled = false;
+            inputPanel.Enabled = optionsPanel.Enabled = statusButton.Enabled = patchButton.Enabled = restoreButton.Enabled = false;
             progressBar.Visible = true;
             stateLabel.Text = "正在" + label + "…";
             AppendLog(Environment.NewLine + "── " + label + " ──");
             try
             {
-                int result = await Task.Run(() => OperationRunner.Run(action, input, closeProcesses, createBackup, AppendLog));
+                int result = await Task.Run(() => OperationRunner.Run(action, input, closeProcesses, createBackup, options, AppendLog));
                 stateLabel.Text = result == 0 ? label + "完成" : "有操作失败，请查看记录";
             }
             catch (Exception error) { AppendLog("失败：" + error.Message); stateLabel.Text = "操作未完成，请查看记录"; }
             finally
             {
                 busy = false;
-                inputPanel.Enabled = autoCloseCheckBox.Enabled = createBackupCheckBox.Enabled = statusButton.Enabled = patchButton.Enabled = restoreButton.Enabled = true;
+                inputPanel.Enabled = optionsPanel.Enabled = statusButton.Enabled = patchButton.Enabled = restoreButton.Enabled = true;
                 progressBar.Visible = false;
             }
         }

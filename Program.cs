@@ -38,21 +38,30 @@ namespace NutstoreAutoPatch
             ConnectConsole();
             try
             {
-                if (args.Length < 2 || args.Length > 4)
-                    throw new InvalidOperationException("用法：NutstoreAutoPatch.exe status|patch|restore \"坚果云目录或 DLL 路径\" [--close] [--no-backup]");
+                if (args.Length < 2)
+                    throw new InvalidOperationException("用法：NutstoreAutoPatch.exe status|patch|restore \"坚果云目录或 DLL 路径\" [--close] [--no-backup] [--no-userdata] [--disable-background-updates] [--portable-logs] [--disable-startup]");
                 bool closeProcesses = false;
                 bool createBackup = true;
+                var options = new PortableOptions();
+                var flags = new HashSet<string>(StringComparer.Ordinal);
                 var positional = new List<string>();
                 foreach (string argument in args)
                 {
-                    if (argument == "--close" && !closeProcesses) closeProcesses = true;
-                    else if (argument == "--no-backup" && createBackup) createBackup = false;
-                    else if (argument.StartsWith("--", StringComparison.Ordinal))
-                        throw new InvalidOperationException("未知或重复的选项：" + argument);
-                    else positional.Add(argument);
+                    if (!argument.StartsWith("--", StringComparison.Ordinal)) { positional.Add(argument); continue; }
+                    if (!flags.Add(argument)) throw new InvalidOperationException("重复的选项：" + argument);
+                    switch (argument)
+                    {
+                        case "--close": closeProcesses = true; break;
+                        case "--no-backup": createBackup = false; break;
+                        case "--no-userdata": options.ApplyUserData = false; break;
+                        case "--disable-background-updates": options.DisableBackgroundUpdates = true; break;
+                        case "--portable-logs": options.PortableLogs = true; break;
+                        case "--disable-startup": options.DisableStartup = true; break;
+                        default: throw new InvalidOperationException("未知的选项：" + argument);
+                    }
                 }
                 if (positional.Count != 2) throw new InvalidOperationException("请指定操作和坚果云目录或 DLL 路径。");
-                return OperationRunner.Run(positional[0].ToLowerInvariant(), positional[1], closeProcesses, createBackup, Console.WriteLine);
+                return OperationRunner.Run(positional[0].ToLowerInvariant(), positional[1], closeProcesses, createBackup, options, Console.WriteLine);
             }
             catch (Exception error) { Console.Error.WriteLine("失败：" + error.Message); return 1; }
         }

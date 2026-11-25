@@ -33,6 +33,16 @@ if ($LASTEXITCODE -ne 0) { throw "Initial relative path check failed: $LASTEXITC
 if ($LASTEXITCODE -ne 0) { throw "Relocated relative path check failed: $LASTEXITCODE" }
 Write-Output 'PASS: relative data path follows the relocated application directory.'
 
+foreach ($testName in @('UpdateOptionTests', 'ConfigOptionTests')) {
+    $optionExe = Join-Path $testPath ($testName + '.exe')
+    & $compiler /nologo /warn:4 /warnaserror+ "/out:$optionExe" "/reference:$program" "/reference:$cecil" /reference:System.Xml.dll (Join-Path $repoRoot ('Tests\' + $testName + '.cs'))
+    if ($LASTEXITCODE -ne 0) { throw "$testName compilation failed: $LASTEXITCODE" }
+    $optionRoot = Join-Path ([IO.Path]::GetFullPath($OutputRoot)) ('option-' + [guid]::NewGuid().ToString('N'))
+    & $optionExe $optionRoot
+    if ($LASTEXITCODE -ne 0) { throw "$testName failed: $LASTEXITCODE" }
+    if ($testName -eq 'UpdateOptionTests') { $updateFixtures = $optionRoot }
+}
+
 function Invoke-ToolCheck {
     param([string]$Action, [string]$Path, [int]$ExpectedExitCode)
     $runId = [guid]::NewGuid().ToString('N')
@@ -55,6 +65,7 @@ if ((Get-FileHash -LiteralPath $relocated -Algorithm SHA256).Hash -ne $beforeSta
 Write-Output 'PASS: WinExe CLI waits, returns exit codes, and preserves the input assembly.'
 $originalFixture = @(Get-ChildItem -LiteralPath (Join-Path $fixtures 'normal\bin-1.0') -Filter '*.original.*.bak' -File)
 if ($originalFixture.Count -ne 1) { throw 'Expected exactly one original fixture backup for process-control tests.' }
+& (Join-Path $repoRoot 'Tests\PortableOptionsSmoke.ps1') -Program $program -OriginalLib $originalFixture[0].FullName -OriginalLegacy (Join-Path $updateFixtures 'cli-fixture\NutstoreClient.Legacy.dll') -OutputRoot $OutputRoot
 & (Join-Path $repoRoot 'Tests\ProcessControlSmoke.ps1') -Program $program -OriginalFixture $originalFixture[0].FullName -OutputRoot $OutputRoot
 & (Join-Path $PSScriptRoot 'gui-smoke.ps1') -Executable $program
 Write-Output "TEST_EVIDENCE=$testPath"

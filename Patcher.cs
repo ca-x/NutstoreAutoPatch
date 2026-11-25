@@ -65,6 +65,38 @@ namespace NutstoreAutoPatch
             using (var assembly = Read(path)) return Matches(assembly);
         }
 
+        public static void Validate(string path)
+        {
+            using (var assembly = Read(path))
+                if (!Matches(assembly) && (assembly.Name.HasPublicKey || (assembly.MainModule.Attributes & ModuleAttributes.StrongNameSigned) != 0))
+                    throw new InvalidOperationException("此程序集有强名称签名，没有原始密钥，拒绝修改。");
+        }
+
+        public static bool CanRestore(string path)
+        {
+            path = Path.GetFullPath(path);
+            string hash = Hash(path);
+            if (!File.Exists(RecordPath(path, hash))) return false;
+            string originalHash;
+            ValidatedBackup(path, hash, out originalHash);
+            return true;
+        }
+
+        private static string ValidatedBackup(string path, string patchedHash, out string originalHash)
+        {
+            string record = RecordPath(path, patchedHash);
+            if (!File.Exists(record)) throw new InvalidOperationException("当前 DLL 没有可用的恢复记录；可能未勾选备份，或文件已更新、由其他工具修改，无法自动恢复。");
+            string[] state = File.ReadAllLines(record);
+            if (state.Length != 2 || state[1].Length != 64 || state[1].Any(c => !"0123456789abcdef".Contains(c)) ||
+                state[0] != Path.GetFileName(path) + ".original." + state[1] + ".bak")
+                throw new InvalidOperationException("恢复记录无效。");
+            string backup = Path.Combine(Path.GetDirectoryName(path), state[0]);
+            originalHash = state[1];
+            if (Hash(backup) != originalHash) throw new InvalidOperationException("备份哈希不一致，拒绝恢复。");
+            if (!IsPatched(path)) throw new InvalidOperationException("当前 DLL 不是受支持的补丁，拒绝恢复。");
+            return backup;
+        }
+
         private static string RecordPath(string path, string patchedHash)
         {
             return path + ".portable." + patchedHash + ".state";
@@ -137,20 +169,13 @@ namespace NutstoreAutoPatch
             using (var operationLock = new FileStream(path + ".portable.lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
             {
                 string patchedHash = Hash(path);
-                string record = RecordPath(path, patchedHash);
-                if (!File.Exists(record)) throw new InvalidOperationException("当前 DLL 没有可用的恢复记录；可能未勾选备份，或文件已更新、由其他工具修改，无法自动恢复。");
-                string[] state = File.ReadAllLines(record);
-                if (state.Length != 2 || state[1].Length != 64 || state[1].Any(c => !"0123456789abcdef".Contains(c)) ||
-                    state[0] != Path.GetFileName(path) + ".original." + state[1] + ".bak")
-                    throw new InvalidOperationException("恢复记录无效。");
-                string backup = Path.Combine(Path.GetDirectoryName(path), state[0]);
-                if (Hash(backup) != state[1]) throw new InvalidOperationException("备份哈希不一致，拒绝恢复。");
-                if (!IsPatched(path)) throw new InvalidOperationException("当前 DLL 不是受支持的补丁，拒绝恢复。");
+                string originalHash;
+                string backup = ValidatedBackup(path, patchedHash, out originalHash);
                 string temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
                 try
                 {
                     File.Copy(backup, temp, false);
-                    if (Hash(temp) != state[1] || Hash(path) != patchedHash)
+                    if (Hash(temp) != originalHash || Hash(path) != patchedHash)
                         throw new InvalidOperationException("恢复期间文件已变化，停止替换。");
                     File.Replace(temp, path, null);
                 }
