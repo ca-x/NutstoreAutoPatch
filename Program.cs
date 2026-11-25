@@ -1,78 +1,60 @@
-﻿using System.IO;
-using System.Linq;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Windows.Forms;
 
 namespace NutstoreAutoPatch
 {
-    internal class Program
+    internal static class Program
     {
-        public static void Main(string[] args)
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool AttachConsole(uint processId);
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetStdHandle(int handle);
+        [DllImport("kernel32.dll")]
+        private static extern uint GetFileType(IntPtr handle);
+
+        private static void ConnectConsole()
         {
-            const string nutstoreLib = "NutstoreLib.dll";
-            const string nutstoreLibBackup = "NutstoreLib.origin.dll";
-            const string nutstoreLibTarget = "NutstoreLib.target.dll";
-            
-            const string directoryutils = "NutstoreLib.Utils.DirectoryUtils";
-            const string appdataNutstoreDir = "get_APPDATA_NUTSTORE_DIR";
+            IntPtr output = GetStdHandle(-11);
+            if (output == IntPtr.Zero || output == new IntPtr(-1) || GetFileType(output) == 0)
+                AttachConsole(uint.MaxValue);
+            Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true });
+            Console.SetError(new StreamWriter(Console.OpenStandardError(), new UTF8Encoding(false)) { AutoFlush = true });
+        }
 
-            // backup origin 
-            File.Copy(nutstoreLib, nutstoreLibBackup, true);
-            // Read the assembly
-            using (var assemblyDefinition = AssemblyDefinition.ReadAssembly(nutstoreLib))
+        [STAThread]
+        public static int Main(string[] args)
+        {
+            if (args.Length == 0)
             {
-                var directoryUtil = assemblyDefinition.MainModule.Types.First(t => t.FullName == directoryutils);
-                var appdataDirMethod = directoryUtil.Methods.First(m => m.Name == appdataNutstoreDir);
-
-                // 清除当前指令
-                appdataDirMethod.Body.Instructions.Clear();
-
-                // 获取IL处理器
-                var ilProcessor = appdataDirMethod.Body.GetILProcessor();
-
-                // 构造调用NutstoreLib.Utils.DirectoryUtils.get_NUTSTORE_INSTALL_DIR的指令
-                var getInstallDirMethod = appdataDirMethod.Module.ImportReference(
-                    appdataDirMethod.DeclaringType.Module.Types
-                        .First(t => t.Name == "DirectoryUtils" && t.Namespace == "NutstoreLib.Utils")
-                        .Methods.First(m => m.Name == "get_NUTSTORE_INSTALL_DIR")
-                );
-                ilProcessor.Append(ilProcessor.Create(OpCodes.Call, getInstallDirMethod));
-
-                // 构造调用System.IO.DirectoryInfo构造函数的指令
-                var directoryInfoConstructor = appdataDirMethod.Module.ImportReference(
-                    typeof(System.IO.DirectoryInfo).GetConstructor(new[] { typeof(string) })
-                );
-                ilProcessor.Append(ilProcessor.Create(OpCodes.Newobj, directoryInfoConstructor));
-
-                // 构造获取DirectoryInfo.Parent属性的调用指令
-                var getParentMethod = appdataDirMethod.Module.ImportReference(
-                    typeof(System.IO.DirectoryInfo).GetProperty("Parent").GetGetMethod()
-                );
-                ilProcessor.Append(ilProcessor.Create(OpCodes.Call, getParentMethod));
-
-                // 构造调用System.IO.FileSystemInfo.FullName属性的指令
-                var getFullNameMethod = appdataDirMethod.Module.ImportReference(
-                    typeof(System.IO.FileSystemInfo).GetProperty("FullName").GetGetMethod()
-                );
-                ilProcessor.Append(ilProcessor.Create(OpCodes.Callvirt, getFullNameMethod));
-
-                // 加载字符串"UserData"
-                ilProcessor.Append(ilProcessor.Create(OpCodes.Ldstr, "UserData"));
-
-                // 构造调用Pri.LongPath.Path.Combine的指令
-                var pathCombineMethod = appdataDirMethod.Module.ImportReference(
-                    typeof(System.IO.Path).GetMethod("Combine", new[] { typeof(string), typeof(string) })
-                );
-                ilProcessor.Append(ilProcessor.Create(OpCodes.Call, pathCombineMethod));
-
-                // 返回指令
-                ilProcessor.Append(ilProcessor.Create(OpCodes.Ret));
-
-                // Write the modified assembly
-                assemblyDefinition.Write(nutstoreLibTarget);
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.Run(new MainForm());
+                return 0;
             }
-            File.Copy(nutstoreLibTarget,nutstoreLib,true);
-            File.Delete(nutstoreLibTarget);
+            ConnectConsole();
+            try
+            {
+                if (args.Length < 2 || args.Length > 4)
+                    throw new InvalidOperationException("用法：NutstoreAutoPatch.exe status|patch|restore \"坚果云目录或 DLL 路径\" [--close] [--no-backup]");
+                bool closeProcesses = false;
+                bool createBackup = true;
+                var positional = new List<string>();
+                foreach (string argument in args)
+                {
+                    if (argument == "--close" && !closeProcesses) closeProcesses = true;
+                    else if (argument == "--no-backup" && createBackup) createBackup = false;
+                    else if (argument.StartsWith("--", StringComparison.Ordinal))
+                        throw new InvalidOperationException("未知或重复的选项：" + argument);
+                    else positional.Add(argument);
+                }
+                if (positional.Count != 2) throw new InvalidOperationException("请指定操作和坚果云目录或 DLL 路径。");
+                return OperationRunner.Run(positional[0].ToLowerInvariant(), positional[1], closeProcesses, createBackup, Console.WriteLine);
+            }
+            catch (Exception error) { Console.Error.WriteLine("失败：" + error.Message); return 1; }
         }
     }
 }
