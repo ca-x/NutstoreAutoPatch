@@ -28,7 +28,10 @@ function Run-Tool([string]$Action, [bool]$Close, [int]$Expected) {
     if ($Close) { $arguments += '--close' }
     $name = $Action + '-' + $Close
     $process = Start-Process -FilePath ([IO.Path]::GetFullPath($Program)) -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $testRoot ($name + '.stdout')) -RedirectStandardError (Join-Path $testRoot ($name + '.stderr'))
-    if ($process.ExitCode -ne $Expected) { throw "Unexpected $Action exit code: $($process.ExitCode), expected $Expected. Evidence: $testRoot" }
+    if ($process.ExitCode -ne $Expected) {
+        Get-Content -Encoding UTF8 -LiteralPath (Join-Path $testRoot ($name + '.stdout')), (Join-Path $testRoot ($name + '.stderr')) | Write-Output
+        throw "Unexpected $Action exit code: $($process.ExitCode), expected $Expected. Evidence: $testRoot"
+    }
 }
 try {
     $selected = Start-Process -FilePath $workerA -PassThru -WindowStyle Hidden
